@@ -56,6 +56,8 @@ python3 -m venv .venv
 .venv/bin/python -m reel_loom.demo --workflow conformance
 ```
 
-全部 16 个有界流程记录在 `.project-runtime.json`，每条都经过真实领域与持久化路径，并观察成功或拒绝结果。测试延后：基线不包含单元/集成测试文件、不声明 test_command；这些生产示例不是完整测试保障。后续质量保障任务可从这些入口补建测试。
+媒体任务的领域流程（渲染、电平/波形、R128 响度、接触表）只声明要消费的冻结媒体、期望产物与完成条件；具体命令、临时文件与进程生死由 `reel_loom.execution` 的统一执行器承担，同一服务内分析与渲染共享其有界容量，等待取消与运行超时都会释放容量与 scratch。`reel_loom.inproc` 提供不启动子进程的执行后端用于边界验证：`--workflow boundary` 换用它在同一批领域流程上产出真实媒体，`--workflow executor` 验证容量、取消、超时与中断重试语义。
+
+全部 18 个有界流程记录在 `.project-runtime.json`，每条都经过真实领域与持久化路径，并观察成功或拒绝结果。测试延后：基线不包含单元/集成测试文件、不声明 test_command；这些生产示例不是完整测试保障。后续质量保障任务可从这些入口补建测试。
 
 源映射见 `.task-source.json`，业务边界见 `PROJECT_SPEC.md`。题库和内部难度证据在仓库外独立维护，不属于基线运行依赖。

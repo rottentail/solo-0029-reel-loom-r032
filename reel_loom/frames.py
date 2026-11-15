@@ -1,12 +1,13 @@
 from .errors import require
+from .execution import ArtifactSpec, SheetTask, Source
 from .values import object_body, integer
 from .timebase import seconds
 
 
 class Frames:
-    def __init__(self, assets, blobs, processes, artifacts):
+    def __init__(self, assets, blobs, executor, artifacts):
         self.assets, self.blobs = assets, blobs
-        self.processes, self.artifacts = processes, artifacts
+        self.executor, self.artifacts = executor, artifacts
 
     def contact_sheet(self, asset_id, raw):
         object_body(raw, ("count", "columns", "cell_width"))
@@ -20,13 +21,12 @@ class Frames:
         rows = (count+columns-1)//columns
         interval = duration/count
         timestamps = [round((i+.5)*interval, 6) for i in range(count)]
-        with self.blobs.temporary(".jpg") as output:
-            filter_spec = (f'fps=fps={count}/{duration}:start_time={interval/2},'
-                           f'scale={cell_width}:-2,tile={columns}x{rows}:nb_frames={count}:padding=4:margin=4')
-            self.processes.run(["-protocol_whitelist", "file,pipe", "-i", str(self.blobs.resolve(asset["blob"])),
-                                "-an", "-vf", filter_spec, "-frames:v", "1", "-q:v", "3", str(output)])
-            require(output.is_file(), "empty_sheet", "No video frames were decoded")
-            return self.artifacts.add(asset_id, "contact_sheet", output,
+        source = Source(asset["blob"], self.blobs.resolve(asset["blob"]), asset["metadata"])
+        task = SheetTask(source=source, count=count, columns=columns, rows=rows,
+                         cell_width=cell_width, duration=duration,
+                         product=ArtifactSpec("sheet", ".jpg", "empty_sheet", "No video frames were decoded"))
+        with self.executor.perform(task) as done:
+            return self.artifacts.add(asset_id, "contact_sheet", done.artifact("sheet"),
                                       {"count": count, "columns": columns, "rows": rows,
                                        "cell_width": cell_width, "sample_seconds": timestamps,
                                        "source_blob": asset["blob"], "mime": "image/jpeg"})

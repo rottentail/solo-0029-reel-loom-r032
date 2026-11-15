@@ -1,7 +1,9 @@
+from fractions import Fraction
+from pathlib import Path
 from .errors import require
+from .execution import ArtifactSpec, RenderTask, Source
 from .values import digest
-from .timebase import decimal, seconds
-from .probe import select_stream
+from .timebase import seconds
 
 
 class Planner:
@@ -28,41 +30,17 @@ class Planner:
                     "sources": closure}
         return {**snapshot, "fingerprint": digest(snapshot)}
 
-    def compile(self, snapshot, resolve, output):
+    def compile(self, snapshot, resolve):
+        """Compile a frozen snapshot into the render task an executor runs."""
         spec = snapshot["look"]["spec"]
-        args, filters, segments = [], [], []
-        for i, item in enumerate(snapshot["document"]["slices"]):
-            asset = snapshot["sources"][item["asset"]]
-            args += ["-protocol_whitelist", "file,pipe", "-i", str(resolve(asset["blob"]))]
-            a, b = decimal(item["in_tick"]), decimal(item["out_tick"])
-            duration = seconds(item["out_tick"]-item["in_tick"])
-            audio = select_stream(asset["metadata"], "audio")
-            if spec["kind"] == "video":
-                video = select_stream(asset["metadata"], "video")
-                if spec["fit"] == "contain":
-                    sizing = (f'scale={spec["width"]}:{spec["height"]}:force_original_aspect_ratio=decrease,'
-                              f'pad={spec["width"]}:{spec["height"]}:(ow-iw)/2:(oh-ih)/2')
-                else:
-                    sizing = (f'scale={spec["width"]}:{spec["height"]}:force_original_aspect_ratio=increase,'
-                              f'crop={spec["width"]}:{spec["height"]}')
-                filters.append(f'[{i}:{video["index"]}]trim=start={a}:end={b},setpts=PTS-STARTPTS,'
-                               f'{sizing},setsar=1,fps={spec["frame_rate"]},format=yuv420p[v{i}]')
-            layout = "mono" if spec["channels"] == 1 else "stereo"
-            if audio:
-                filters.append(f'[{i}:{audio["index"]}]atrim=start={a}:end={b},asetpts=PTS-STARTPTS,'
-                               f'aresample={spec["sample_rate"]},aformat=sample_fmts=fltp:channel_layouts={layout},'
-                               f'apad,atrim=duration={duration:.6f},volume={spec["gain_db"]}dB[a{i}]')
-            else:
-                filters.append(f'anullsrc=r={spec["sample_rate"]}:cl={layout},atrim=duration={duration:.6f}[a{i}]')
-            segments.append((f"[v{i}]" if spec["kind"] == "video" else "") + f"[a{i}]")
-        count = len(segments)
-        if spec["kind"] == "video":
-            filters.append("".join(segments) + f"concat=n={count}:v=1:a=1[vjoined][aout]")
-            filters.append(f'[vjoined]fps={spec["frame_rate"]},tpad=stop_mode=clone:stop_duration=0.1,'
-                           f'trim=duration={seconds(snapshot["document"]["duration_tick"]):.6f}[vout]')
-            maps = ["-map", "[vout]", "-map", "[aout]", "-c:v", "libx264", "-preset", "veryfast",
-                    "-crf", str(spec["crf"]), "-c:a", "aac", "-movflags", "+faststart"]
-        else:
-            filters.append("".join(segments) + f"concat=n={count}:v=0:a=1[aout]")
-            maps = ["-map", "[aout]", "-c:a", "pcm_s16le"]
-        return args + ["-filter_complex", ";".join(filters)] + maps + [str(output)]
+        sources = tuple(
+            Source(blob=asset["blob"], path=Path(resolve(asset["blob"])), metadata=asset["metadata"])
+            for item in snapshot["document"]["slices"]
+            for asset in (snapshot["sources"][item["asset"]],)
+        )
+        suffix = ".mp4" if spec["kind"] == "video" else ".wav"
+        duration = seconds(snapshot["document"]["duration_tick"])
+        tolerance = max(0.15, 2/float(Fraction(spec["frame_rate"])))
+        return RenderTask(snapshot=snapshot, sources=sources,
+                          product=ArtifactSpec("rendition", suffix),
+                          duration=duration, tolerance=tolerance)

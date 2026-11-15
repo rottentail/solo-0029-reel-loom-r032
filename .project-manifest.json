@@ -88,9 +88,14 @@
       "responsibility": "probe"
     },
     {
-      "id": "processes",
-      "path": "reel_loom/processes.py",
-      "responsibility": "processes"
+      "id": "execution",
+      "path": "reel_loom/execution.py",
+      "responsibility": "execution"
+    },
+    {
+      "id": "inproc",
+      "path": "reel_loom/inproc.py",
+      "responsibility": "execution"
     },
     {
       "id": "reels",
@@ -199,7 +204,7 @@
         "planner",
         "tickets",
         "rendering",
-        "processes",
+        "execution",
         "artifacts"
       ]
     },
@@ -219,7 +224,7 @@
         "api",
         "analysis",
         "samples",
-        "processes",
+        "execution",
         "database"
       ]
     },
@@ -239,7 +244,7 @@
         "api",
         "analysis",
         "samples",
-        "processes",
+        "execution",
         "database"
       ]
     },
@@ -258,7 +263,7 @@
       "module_ids": [
         "api",
         "analysis",
-        "processes",
+        "execution",
         "database"
       ]
     },
@@ -277,7 +282,7 @@
       "module_ids": [
         "api",
         "frames",
-        "processes",
+        "execution",
         "artifacts",
         "blobs"
       ]
@@ -338,7 +343,7 @@
         "api",
         "tickets",
         "rendering",
-        "processes",
+        "execution",
         "artifacts"
       ]
     },
@@ -440,6 +445,52 @@
         "lineage",
         "tickets",
         "database"
+      ]
+    },
+    {
+      "id": "boundary",
+      "name": "无子进程执行边界验证",
+      "entry": "Application(executor=InProcessExecutor) 注入",
+      "success": "渲染、电平、波形、响度、接触表在进程内执行后端上完成且验规通过",
+      "failure": "执行后端未与分析、渲染共享同一实例即拒绝走查",
+      "verification": ".venv/bin/python -m reel_loom.demo --workflow boundary",
+      "steps": [
+        "输入经公开入口到领域规则",
+        "跨媒体或持久化边界提交结果",
+        "回读结果并观察拒绝路径"
+      ],
+      "module_ids": [
+        "api",
+        "planner",
+        "tickets",
+        "rendering",
+        "analysis",
+        "frames",
+        "execution",
+        "inproc",
+        "conformance"
+      ]
+    },
+    {
+      "id": "executor",
+      "name": "执行容量与中断语义",
+      "entry": "执行器容量编排及 POST /tickets/{id}/retry",
+      "success": "等待取消与运行超时都释放容量，失败不登记成品，中断后原单重试完成",
+      "failure": "超时任务登记成品或容量泄漏即拒绝",
+      "verification": ".venv/bin/python -m reel_loom.demo --workflow executor",
+      "steps": [
+        "输入经公开入口到领域规则",
+        "跨媒体或持久化边界提交结果",
+        "回读结果并观察拒绝路径"
+      ],
+      "module_ids": [
+        "api",
+        "planner",
+        "tickets",
+        "rendering",
+        "execution",
+        "artifacts",
+        "conformance"
       ]
     }
   ],

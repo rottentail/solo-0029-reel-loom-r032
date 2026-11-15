@@ -70,6 +70,14 @@
     {
       "workflow_id": "lineage",
       "command": ".venv/bin/python -m reel_loom.demo --workflow lineage"
+    },
+    {
+      "workflow_id": "boundary",
+      "command": ".venv/bin/python -m reel_loom.demo --workflow boundary"
+    },
+    {
+      "workflow_id": "executor",
+      "command": ".venv/bin/python -m reel_loom.demo --workflow executor"
     }
   ]
 }

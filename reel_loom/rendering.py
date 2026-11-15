@@ -2,36 +2,33 @@ import logging
 import threading
 from .errors import LoomError
 from .probe import inspect_media
-from .timebase import seconds, TICKS_PER_SECOND
+from .timebase import seconds
 
 logger = logging.getLogger(__name__)
 
 
 class Renderer:
-    def __init__(self, settings, blobs, tickets, planner, processes, artifacts):
+    def __init__(self, settings, blobs, tickets, planner, executor, artifacts):
         self.settings, self.blobs, self.tickets = settings, blobs, tickets
-        self.planner, self.processes, self.artifacts = planner, processes, artifacts
+        self.planner, self.executor, self.artifacts = planner, executor, artifacts
         self.stopping = threading.Event()
         self.threads = []
 
     def execute(self, ticket):
         ticket_id = ticket["id"]
-        snapshot = ticket["snapshot"]
-        suffix = ".mp4" if snapshot["look"]["spec"]["kind"] == "video" else ".wav"
         try:
-            with self.blobs.temporary(suffix) as output:
-                args = self.planner.compile(snapshot, lambda key: self.blobs.resolve(key, verify=True), output)
-                duration = seconds(snapshot["document"]["duration_tick"])
-                self.processes.run(args,
+            task = self.planner.compile(ticket["snapshot"], lambda key: self.blobs.resolve(key, verify=True))
+            with self.executor.perform(task,
                     cancelled=lambda: self.stopping.is_set() or self.tickets.cancellation_requested(ticket_id),
-                    progress=lambda value: self.tickets.progress(ticket_id, value), duration=duration)
-                metadata = inspect_media(output, self.settings)
+                    progress=lambda value: self.tickets.progress(ticket_id, value)) as done:
+                rendition = done.artifact("rendition")
+                metadata = inspect_media(rendition, self.settings)
                 actual = seconds(metadata["duration_tick"])
-                tolerance = max(0.15, 2/float(__import__('fractions').Fraction(snapshot["look"]["spec"]["frame_rate"])))
-                if abs(actual-duration) > tolerance:
+                if abs(actual-task.duration) > task.tolerance:
                     raise LoomError("rendition_duration", "Encoded duration differs from the frozen reel", 422,
-                                    {"expected": duration, "actual": actual})
-                return self.artifacts.commit_render(ticket_id, output, {**metadata, "fingerprint": ticket["fingerprint"]})
+                                    {"expected": task.duration, "actual": actual})
+                return self.artifacts.commit_render(ticket_id, rendition,
+                                                  {**metadata, "fingerprint": ticket["fingerprint"]})
         except LoomError as exc:
             self.tickets.fail(ticket_id, exc)
             return None
